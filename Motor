@@ -1,0 +1,41 @@
+import RPi.GPIO as GPIO
+import time
+
+# Disable GPIO warnings
+GPIO.setwarnings(False)
+
+# Set up GPIO using BCM numbering
+GPIO.setmode(GPIO.BCM)
+
+# Set GPIO 25 as output
+servo_pin = 25
+GPIO.setup(servo_pin, GPIO.OUT)
+
+# Create a PWM instance with a frequency of 50Hz
+pwm = GPIO.PWM(servo_pin, 50)
+
+# Start PWM with a duty cycle of 0 (stopped)
+pwm.start(0)
+
+try:
+    while True:
+        # Rotate clockwise at slow speed
+        pwm.ChangeDutyCycle(5)  # Adjust duty cycle for clockwise rotation
+        time.sleep(20000)  # Rotate for 2 seconds
+
+        # Stop briefly
+        pwm.ChangeDutyCycle(0)
+        time.sleep(1)  # Stop for 1 second
+
+        # Rotate counterclockwise at fast speed
+        pwm.ChangeDutyCycle(10)  # Adjust duty cycle for counterclockwise rotation
+        time.sleep(0)  # Rotate for 2 seconds
+
+        # Stop briefly
+        pwm.ChangeDutyCycle(0)
+        time.sleep(0)  # Stop for 1 second
+
+except KeyboardInterrupt:
+    # Clean up GPIO on CTRL+C exit
+    pwm.stop()
+    GPIO.cleanup()
