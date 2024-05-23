@@ -1,0 +1,71 @@
+import RPi.GPIO as GPIO
+import time
+import matplotlib.pyplot as plt
+import numpy as np
+
+plt.ion()  # Enable interactive mode
+
+# Define GPIO pins for each sensor
+sensors = [
+    {"TRIG": 20, "ECHO": 21},
+    {"TRIG": 26, "ECHO": 19},
+    {"TRIG": 24, "ECHO": 23}
+]
+
+print("Distance Measurement In Progress")
+
+# Set up GPIO mode and warnings
+GPIO.setmode(GPIO.BCM)
+GPIO.setwarnings(False)
+
+# Set up each sensor
+for sensor in sensors:
+    GPIO.setup(sensor["TRIG"], GPIO.OUT)
+    GPIO.setup(sensor["ECHO"], GPIO.IN)
+
+try:
+    while True:
+        distances = []
+        
+        for sensor in sensors:
+            TRIG = sensor["TRIG"]
+            ECHO = sensor["ECHO"]
+
+            GPIO.output(TRIG, False)
+            print("Waiting For Sensor To Settle")
+            time.sleep(2)
+
+            GPIO.output(TRIG, True)
+            time.sleep(0.00001)
+            GPIO.output(TRIG, False)
+
+            while GPIO.input(ECHO) == 0:
+                pulse_start = time.time()
+
+            while GPIO.input(ECHO) == 1:
+                pulse_end = time.time()
+
+            pulse_duration = pulse_end - pulse_start
+
+            distance = pulse_duration * 17150
+            distance = round(distance, 2)
+
+            print("Distance (Sensor {}): {} cm".format(sensors.index(sensor) + 1, distance))
+            distances.append(distance)
+        
+        # Plot the distances in a radar
+        plt.clf()
+        angles = np.linspace(0, 2 * np.pi, len(distances), endpoint=False).tolist()
+        distances += [distances[0]]  # Close the loop for the radar plot
+        angles += [angles[0]]
+        ax = plt.subplot(111, polar=True)
+        ax.plot(angles, distances, marker='o')
+        ax.fill(angles, distances, 'b', alpha=0.1)
+        ax.set_ylim(0, max(distances) + 10)  # Set the y-axis limit slightly larger than the maximum distance
+        ax.set_yticklabels([])  # Hide y-axis labels
+        plt.draw()
+        plt.pause(0.1)
+
+except KeyboardInterrupt:
+    print("Cleaning up!")
+    GPIO.cleanup()
