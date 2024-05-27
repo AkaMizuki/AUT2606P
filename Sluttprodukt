@@ -1,0 +1,143 @@
+import RPi.GPIO as GPIO
+import time
+import matplotlib.pyplot as plt
+import numpy as np
+
+plt.ion()  # Enable interactive mode for live updating plots
+
+# Define GPIO pins for each sensor
+sensors = [
+    {"TRIG": 20, "ECHO": 21},
+    {"TRIG": 26, "ECHO": 19},
+    {"TRIG": 24, "ECHO": 23}
+]
+
+# Define GPIO pins for servos
+MAIN_SERVO_PIN = 25
+TURNING_SERVO_PIN = 6
+
+# Define servo angles
+MAIN_SERVO_FORWARD_ANGLE = 3  # Reduced duty cycle for forward movement
+MAIN_SERVO_STOP_ANGLE = 0
+TURNING_SERVO_LEFT_ANGLE = 50    # Example duty cycle for left turning
+TURNING_SERVO_NEUTRAL_ANGLE = 7.5
+
+# Define servo speed and turning moment adjustments
+TURNING_SERVO_SPEED = 2  # Adjust to decrease speed
+TURNING_SERVO_TURNING_MOMENT = 2  # Adjust to decrease turning moment
+
+# Define maximum number of turns
+MAX_TURNS = 2
+turn_count = 0  # Initialize turn count
+
+print("Distance Measurement In Progress")
+
+# Set up GPIO mode and warnings
+GPIO.setmode(GPIO.BCM)
+GPIO.setwarnings(False)
+
+# Set up each sensor
+for sensor in sensors:
+    GPIO.setup(sensor["TRIG"], GPIO.OUT)
+    GPIO.setup(sensor["ECHO"], GPIO.IN)
+
+# Set up main servo motor for forward and stop
+GPIO.setup(MAIN_SERVO_PIN, GPIO.OUT)
+main_servo = GPIO.PWM(MAIN_SERVO_PIN, 50)  # 50 Hz frequency
+main_servo.start(0)
+
+# Set up turning servo motor
+GPIO.setup(TURNING_SERVO_PIN, GPIO.OUT)
+turning_servo = GPIO.PWM(TURNING_SERVO_PIN, 50)  # 50 Hz frequency
+turning_servo.start(0)
+
+def measure_distance(TRIG, ECHO):
+    # Ensure the trigger pin is settled
+    GPIO.output(TRIG, False)
+    time.sleep(0.1)
+
+    # Send a 10us pulse to trigger the sensor
+    GPIO.output(TRIG, True)
+    time.sleep(0.00001)
+    GPIO.output(TRIG, False)
+
+    # Record the last low timestamp for echo start
+    while GPIO.input(ECHO) == 0:
+        pulse_start = time.time()
+
+    # Record the last high timestamp for echo end
+    while GPIO.input(ECHO) == 1:
+        pulse_end = time.time()
+
+    # Calculate pulse duration
+    pulse_duration = pulse_end - pulse_start
+
+    # Distance calculation in cm
+    distance = pulse_duration * 17150
+    distance = round(distance, 2)
+
+    return distance
+
+try:
+    while True:
+        distances = []
+        too_close = False
+
+        for sensor in sensors:
+            TRIG = sensor["TRIG"]
+            ECHO = sensor["ECHO"]
+
+            distance = measure_distance(TRIG, ECHO)
+            print("Distance (Sensor {}): {} cm".format(sensors.index(sensor) + 1, distance))
+            distances.append(distance)
+
+            if distance < 15:
+                too_close = True
+
+        if too_close:
+            if turn_count < MAX_TURNS:
+                # If any sensor detects an obstacle closer than 15 cm, turn left slowly
+                print("Obstacle detected! Turning left...")
+                main_servo.ChangeDutyCycle(MAIN_SERVO_STOP_ANGLE)  # Stop the back wheels
+                turning_servo.ChangeDutyCycle(TURNING_SERVO_LEFT_ANGLE)
+                time.sleep(0.1)  # Turn left slowly
+
+                # Stop turning after 0.5 seconds
+                time.sleep(0.5)
+
+                turning_servo.ChangeDutyCycle(TURNING_SERVO_NEUTRAL_ANGLE)  # Reset turning servo to neutral
+                time.sleep(0.1)  # Ensure servo stays in neutral position
+                turning_servo.ChangeDutyCycle(0)  # Stop the servo
+
+                turn_count += 1
+            else:
+                # If the maximum number of turns is reached, move back and stop
+                print("Max turns reached. Moving back.")
+                main_servo.ChangeDutyCycle(MAIN_SERVO_STOP_ANGLE)  # Stop the back wheels
+                time.sleep(0.5)  # Move back for 0.5 seconds
+
+                # Reset turn count and continue
+                turn_count = 0
+        else:
+            print("Path clear. Moving forward.")
+            # Move forward
+            main_servo.ChangeDutyCycle(MAIN_SERVO_FORWARD_ANGLE)
+
+        # Plot the distances on a radar plot
+        plt.clf()  # Clear the figure
+        angles = np.linspace(0, 2 * np.pi, len(distances), endpoint=False).tolist()
+        distances += [distances[0]]  # Close the loop for the radar plot
+        angles += [angles[0]]
+        ax = plt.subplot(111, polar=True)
+        ax.plot(angles, distances, marker='o')
+        ax.fill(angles, distances, 'b', alpha=0.1)
+        ax.set_ylim(0, max(distances) + 10)  # Set y-axis limit slightly larger than max distance
+        ax.set_yticklabels([])  # Hide y-axis labels
+        plt.draw()  # Draw the updated plot
+        plt.pause(0.1)  # Pause briefly to allow for the plot to be updated
+
+except KeyboardInterrupt:
+    print("Cleaning up!")
+    main_servo.stop()
+    turning_servo.stop()
+    GPIO.cleanup()  # Reset GPIO settings
